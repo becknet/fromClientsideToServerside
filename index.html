@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HTML-Input zu PHP-Validierung</title>
+    <link rel="icon" href="data:,">
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace" aria-labelledby="page-title">
+        <div class="intro">
+          <p class="eyebrow">Clientside to Serverside</p>
+          <h1 id="page-title">PHP-Validierung aus HTML-Input erzeugen</h1>
+          <p>
+            Gib ein einzelnes HTML-Input-Feld ein. Die App liest die clientseitigen
+            Validierungsattribute aus und erzeugt ein serverseitiges PHP-Snippet.
+          </p>
+        </div>
+
+        <div class="generator-grid">
+          <section class="panel input-panel" aria-labelledby="input-title">
+            <div class="panel-header">
+              <h2 id="input-title">HTML-Input</h2>
+              <button class="ghost-button" type="button" id="exampleButton">Beispiel</button>
+            </div>
+
+            <label for="inputSource">Input-String</label>
+            <textarea id="inputSource" spellcheck="false"><input type="email" name="email" required maxlength="30"></textarea>
+
+            <div class="actions">
+              <button class="primary-button" type="button" id="generateButton">PHP erzeugen</button>
+              <button class="secondary-button" type="button" id="clearButton">Leeren</button>
+            </div>
+
+            <p class="status" id="status" role="status" aria-live="polite"></p>
+          </section>
+
+          <section class="panel details-panel" aria-labelledby="details-title">
+            <h2 id="details-title">Erkannte Attribute</h2>
+            <dl class="attribute-list" id="attributeList"></dl>
+          </section>
+        </div>
+
+        <section class="panel output-panel" aria-labelledby="output-title">
+          <div class="panel-header">
+            <h2 id="output-title">Serverseitige PHP-Validierung</h2>
+            <button class="ghost-button" type="button" id="copyButton">Kopieren</button>
+          </div>
+          <pre><code id="phpOutput"></code></pre>
+        </section>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
