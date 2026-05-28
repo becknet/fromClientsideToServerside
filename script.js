@@ -1,4 +1,5 @@
 const supportedAttributes = [
+  "element",
   "type",
   "name",
   "required",
@@ -7,13 +8,19 @@ const supportedAttributes = [
   "minlength",
   "maxlength",
   "pattern",
+  "multiple",
+  "values",
 ];
 
 const examples = [
   '<input type="email" name="email" required maxlength="30">',
   '<input type="text" name="username" required minlength="3" maxlength="20" pattern="[A-Za-z0-9_]+">',
   '<input type="number" name="age" required min="18" max="120">',
-  '<input type="url" name="website" maxlength="200">',
+  '<input type="checkbox" name="newsletter" value="yes" required>',
+  '<input type="checkbox" name="hobbies[]" value="sport">\n<input type="checkbox" name="hobbies[]" value="musik">\n<input type="checkbox" name="hobbies[]" value="gaming">\n<input type="checkbox" name="hobbies[]" value="fotografie">',
+  '<input type="radio" name="payment" value="card" required>\n<input type="radio" name="payment" value="paypal">\n<input type="radio" name="payment" value="invoice">',
+  '<select name="country" required>\n  <option value="">Bitte waehlen</option>\n  <option value="ch">Schweiz</option>\n  <option value="de">Deutschland</option>\n</select>',
+  '<textarea name="message" required minlength="10" maxlength="500"></textarea>',
 ];
 
 const inputSource = document.querySelector("#inputSource");
@@ -27,42 +34,189 @@ const statusMessage = document.querySelector("#status");
 
 let exampleIndex = 0;
 
-function parseInputTag(source) {
+function parseFormControl(source) {
   const template = document.createElement("template");
   template.innerHTML = source.trim();
-  const input = template.content.querySelector("input");
+  const controls = [...template.content.querySelectorAll("input, select, textarea")];
 
-  if (!input || template.content.querySelectorAll("input").length !== 1) {
-    throw new Error("Bitte gib genau ein valides <input>-Element ein.");
+  if (controls.length === 0) {
+    throw new Error("Bitte gib ein valides Formularfeld ein.");
   }
 
-  if (!input.name.trim()) {
-    throw new Error("Das Input-Feld braucht ein name-Attribut.");
+  if (isRadioGroup(controls)) {
+    return parseRadioGroup(controls);
   }
 
-  const attributes = supportedAttributes.reduce((result, attribute) => {
-    if (attribute === "required") {
-      result.required = input.hasAttribute("required");
-      return result;
-    }
+  if (isCheckboxGroup(controls)) {
+    return parseCheckboxGroup(controls);
+  }
 
-    if (input.hasAttribute(attribute)) {
-      result[attribute] = input.getAttribute(attribute);
-    }
+  if (controls.length !== 1) {
+    throw new Error("Bitte gib genau ein Formularfeld, eine Radio-Gruppe oder eine Checkbox-Gruppe mit gleichem name ein.");
+  }
 
-    return result;
-  }, {
-    type: input.getAttribute("type") || "text",
-    name: input.name.trim(),
-    required: input.hasAttribute("required"),
+  const control = controls[0];
+  const element = control.tagName.toLowerCase();
+
+  if (!control.name.trim()) {
+    throw new Error("Das Formularfeld braucht ein name-Attribut.");
+  }
+
+  if (element === "input") {
+    return parseInput(control);
+  }
+
+  if (element === "select") {
+    return parseSelect(control);
+  }
+
+  if (element === "textarea") {
+    return parseTextarea(control);
+  }
+
+  throw new Error("Dieses Formularfeld wird noch nicht unterstuetzt.");
+}
+
+function isRadioGroup(controls) {
+  if (controls.length < 2) {
+    return false;
+  }
+
+  const firstName = controls[0].getAttribute("name");
+  return controls.every((control) => (
+    control.tagName.toLowerCase() === "input"
+    && String(control.getAttribute("type") || "text").toLowerCase() === "radio"
+    && control.getAttribute("name") === firstName
+  ));
+}
+
+function isCheckboxGroup(controls) {
+  if (controls.length < 2) {
+    return false;
+  }
+
+  const firstName = controls[0].getAttribute("name");
+  return controls.every((control) => (
+    control.tagName.toLowerCase() === "input"
+    && String(control.getAttribute("type") || "text").toLowerCase() === "checkbox"
+    && control.getAttribute("name") === firstName
+  ));
+}
+
+function parseInput(input) {
+  const type = String(input.getAttribute("type") || "text").toLowerCase();
+  const attributes = collectCommonAttributes(input, {
+    element: "input",
+    type,
+    multiple: input.name.endsWith("[]"),
   });
+
+  if (type === "checkbox") {
+    attributes.values = [input.getAttribute("value") || "on"];
+  }
+
+  if (type === "radio") {
+    attributes.values = [input.getAttribute("value") || "on"];
+  }
+
+  validateAttributes(attributes);
+  return attributes;
+}
+
+function parseRadioGroup(radios) {
+  const fieldName = radios[0].name.trim();
+
+  if (!fieldName) {
+    throw new Error("Die Radio-Gruppe braucht ein name-Attribut.");
+  }
+
+  const attributes = collectCommonAttributes(radios[0], {
+    element: "input",
+    type: "radio",
+    name: fieldName,
+    required: radios.some((radio) => radio.hasAttribute("required")),
+    multiple: false,
+    values: uniqueValues(radios.map((radio) => radio.getAttribute("value") || "on")),
+  });
+
+  validateAttributes(attributes);
+  return attributes;
+}
+
+function parseCheckboxGroup(checkboxes) {
+  const fieldName = checkboxes[0].name.trim();
+
+  if (!fieldName) {
+    throw new Error("Die Checkbox-Gruppe braucht ein name-Attribut.");
+  }
+
+  const attributes = collectCommonAttributes(checkboxes[0], {
+    element: "input",
+    type: "checkbox",
+    name: fieldName,
+    required: checkboxes.some((checkbox) => checkbox.hasAttribute("required")),
+    multiple: fieldName.endsWith("[]"),
+    values: uniqueValues(checkboxes.map((checkbox) => checkbox.getAttribute("value") || "on")),
+  });
+
+  validateAttributes(attributes);
+  return attributes;
+}
+
+function parseSelect(select) {
+  const values = [...select.options]
+    .map((option) => option.value)
+    .filter((value) => value !== "");
+
+  const attributes = collectCommonAttributes(select, {
+    element: "select",
+    type: "select",
+    multiple: select.hasAttribute("multiple") || select.name.endsWith("[]"),
+    values: uniqueValues(values),
+  });
+
+  validateAttributes(attributes);
+  return attributes;
+}
+
+function parseTextarea(textarea) {
+  const attributes = collectCommonAttributes(textarea, {
+    element: "textarea",
+    type: "textarea",
+  });
+
+  validateAttributes(attributes);
+  return attributes;
+}
+
+function collectCommonAttributes(control, overrides = {}) {
+  const attributes = {
+    element: control.tagName.toLowerCase(),
+    type: control.getAttribute("type") || control.tagName.toLowerCase(),
+    name: control.name.trim(),
+    required: control.hasAttribute("required"),
+    multiple: false,
+    ...overrides,
+  };
+
+  ["min", "max", "minlength", "maxlength", "pattern"].forEach((attribute) => {
+    if (control.hasAttribute(attribute)) {
+      attributes[attribute] = control.getAttribute(attribute);
+    }
+  });
+
+  return attributes;
+}
+
+function validateAttributes(attributes) {
+  if (!attributes.name) {
+    throw new Error("Das Formularfeld braucht ein name-Attribut.");
+  }
 
   validateNumericAttribute(attributes, "minlength", "Ganzzahl ab 0");
   validateNumericAttribute(attributes, "maxlength", "Ganzzahl ab 0");
   validateNumericAttribute(attributes, "min", "Zahl");
   validateNumericAttribute(attributes, "max", "Zahl");
-
-  return attributes;
 }
 
 function validateNumericAttribute(attributes, attribute, expectedLabel) {
@@ -78,6 +232,10 @@ function validateNumericAttribute(attributes, attribute, expectedLabel) {
   if (isInvalid) {
     throw new Error(`Das Attribut ${attribute} braucht einen gueltigen Wert (${expectedLabel}).`);
   }
+}
+
+function uniqueValues(values) {
+  return [...new Set(values)];
 }
 
 function escapeHtml(value) {
@@ -96,24 +254,46 @@ function phpRegex(pattern) {
   return phpString(`~^${String(pattern).replaceAll("~", "\\~")}$~`);
 }
 
+function phpArray(values) {
+  return `[${values.map((value) => phpString(value)).join(", ")}]`;
+}
+
 function phpVariableName(field) {
   const sanitized = field.replace(/[^A-Za-z0-9_]/g, "_");
   const normalized = sanitized.replace(/^[^A-Za-z_]+/, "");
   return `$${normalized || "value"}`;
 }
 
+function postFieldName(attributes) {
+  if (attributes.multiple && attributes.name.endsWith("[]")) {
+    return attributes.name.slice(0, -2);
+  }
+
+  return attributes.name;
+}
+
 function renderAttributes(attributes) {
   attributeList.innerHTML = supportedAttributes.map((attribute) => {
-    const value = attribute === "required"
-      ? (attributes.required ? "ja" : "nein")
-      : (attributes[attribute] ?? "-");
+    let value = attributes[attribute] ?? "-";
+
+    if (attribute === "required") {
+      value = attributes.required ? "ja" : "nein";
+    }
+
+    if (attribute === "multiple") {
+      value = attributes.multiple ? "ja" : "nein";
+    }
+
+    if (attribute === "values" && Array.isArray(attributes.values)) {
+      value = attributes.values.length ? attributes.values.join(", ") : "-";
+    }
 
     return `<dt>${escapeHtml(attribute)}</dt><dd>${escapeHtml(value)}</dd>`;
   }).join("");
 }
 
 function buildPhpValidation(attributes) {
-  const field = attributes.name;
+  const field = postFieldName(attributes);
   const fieldPhp = phpString(field);
   const valueVariable = phpVariableName(field);
   const lines = [
@@ -121,12 +301,25 @@ function buildPhpValidation(attributes) {
     "$errors = [];",
     "",
     `if (!isset($_POST[${fieldPhp}])) {`,
-    `    $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} wurde nicht uebermittelt.`)};`,
-    "} else {",
-    `    ${valueVariable} = trim((string) $_POST[${fieldPhp}]);`,
   ];
 
   if (attributes.required) {
+    lines.push(`    $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist erforderlich.`)};`);
+  } else {
+    lines.push("    // Optionales Feld wurde nicht uebermittelt.");
+  }
+
+  lines.push("} else {");
+
+  if (attributes.multiple) {
+    buildMultipleValueValidation(lines, attributes, valueVariable, fieldPhp, field);
+    lines.push("}");
+    return lines.join("\n");
+  }
+
+  lines.push(`    ${valueVariable} = trim((string) $_POST[${fieldPhp}]);`);
+
+  if (attributes.required && attributes.type !== "checkbox") {
     lines.push(
       "",
       `    if (empty(${valueVariable}) && ${valueVariable} !== '0') {`,
@@ -138,6 +331,7 @@ function buildPhpValidation(attributes) {
   lines.push("", `    if (${valueVariable} !== '') {`);
 
   addTypeValidation(lines, attributes, valueVariable, fieldPhp, field);
+  addAllowedValuesValidation(lines, attributes, valueVariable, fieldPhp, field);
   addLengthValidation(lines, attributes, valueVariable, fieldPhp, field);
   addMinMaxValidation(lines, attributes, valueVariable, fieldPhp, field);
   addPatternValidation(lines, attributes, valueVariable, fieldPhp, field);
@@ -145,6 +339,29 @@ function buildPhpValidation(attributes) {
   lines.push("    }", "}");
 
   return lines.join("\n");
+}
+
+function buildMultipleValueValidation(lines, attributes, valueVariable, fieldPhp, field) {
+  lines.push(
+    `    ${valueVariable} = $_POST[${fieldPhp}];`,
+    "",
+    `    if (!is_array(${valueVariable})) {`,
+    `        $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} muss als Liste uebermittelt werden.`)};`,
+    "    }"
+  );
+
+  if (attributes.required) {
+    lines.push(
+      "",
+      `    if (empty(${valueVariable})) {`,
+      `        $errors[${fieldPhp}] = ${phpString(`Bitte waehle mindestens eine Option fuer ${field}.`)};`,
+      "    }"
+    );
+  }
+
+  lines.push("", `    if (is_array(${valueVariable}) && !empty(${valueVariable})) {`);
+  addAllowedArrayValuesValidation(lines, attributes, valueVariable, fieldPhp, field);
+  lines.push("    }");
 }
 
 function addTypeValidation(lines, attributes, valueVariable, fieldPhp, field) {
@@ -175,6 +392,36 @@ function addTypeValidation(lines, attributes, valueVariable, fieldPhp, field) {
       "        }"
     );
   }
+}
+
+function addAllowedValuesValidation(lines, attributes, valueVariable, fieldPhp, field) {
+  if (!Array.isArray(attributes.values) || attributes.values.length === 0) {
+    return;
+  }
+
+  lines.push(
+    `        $allowedValues = ${phpArray(attributes.values)};`,
+    `        if (!in_array(${valueVariable}, $allowedValues, true)) {`,
+    `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} enthaelt keinen erlaubten Wert.`)};`,
+    "        }"
+  );
+}
+
+function addAllowedArrayValuesValidation(lines, attributes, valueVariable, fieldPhp, field) {
+  if (!Array.isArray(attributes.values) || attributes.values.length === 0) {
+    return;
+  }
+
+  lines.push(
+    `        $allowedValues = ${phpArray(attributes.values)};`,
+    `        foreach (${valueVariable} as $selectedValue) {`,
+    "            $selectedValue = trim((string) $selectedValue);",
+    "            if (!in_array($selectedValue, $allowedValues, true)) {",
+    `                $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} enthaelt mindestens einen nicht erlaubten Wert.`)};`,
+    "                break;",
+    "            }",
+    "        }"
+  );
 }
 
 function addLengthValidation(lines, attributes, valueVariable, fieldPhp, field) {
@@ -234,13 +481,13 @@ function addPatternValidation(lines, attributes, valueVariable, fieldPhp, field)
 
 function generate() {
   try {
-    const attributes = parseInputTag(inputSource.value);
+    const attributes = parseFormControl(inputSource.value);
     renderAttributes(attributes);
     phpOutput.textContent = buildPhpValidation(attributes);
     statusMessage.textContent = "PHP-Validierung wurde erzeugt.";
     statusMessage.classList.remove("error");
   } catch (error) {
-    renderAttributes({ type: "-", name: "-", required: false });
+    renderAttributes({ element: "-", type: "-", name: "-", required: false });
     phpOutput.textContent = "";
     statusMessage.textContent = error.message;
     statusMessage.classList.add("error");
