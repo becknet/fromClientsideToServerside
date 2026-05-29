@@ -258,6 +258,10 @@ function phpArray(values) {
   return `[${values.map((value) => phpString(value)).join(", ")}]`;
 }
 
+function phpErrorLine(message, indentation = "    ") {
+  return `${indentation}$error .= ${phpString(`${message}<br>`)};`;
+}
+
 function phpVariableName(field) {
   const sanitized = field.replace(/[^A-Za-z0-9_]/g, "_");
   const normalized = sanitized.replace(/^[^A-Za-z_]+/, "");
@@ -298,13 +302,13 @@ function buildPhpValidation(attributes) {
   const valueVariable = phpVariableName(field);
   const lines = [
     "<?php",
-    "$errors = [];",
+    "$error = '';",
     "",
     `if (!isset($_POST[${fieldPhp}])) {`,
   ];
 
   if (attributes.required) {
-    lines.push(`    $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist erforderlich.`)};`);
+    lines.push(phpErrorLine(`Das Feld ${field} ist erforderlich.`));
   } else {
     lines.push("    // Optionales Feld wurde nicht uebermittelt.");
   }
@@ -323,7 +327,7 @@ function buildPhpValidation(attributes) {
     lines.push(
       "",
       `    if (empty(${valueVariable}) && ${valueVariable} !== '0') {`,
-      `        $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist erforderlich.`)};`,
+      phpErrorLine(`Das Feld ${field} ist erforderlich.`, "        "),
       "    }"
     );
   }
@@ -346,7 +350,7 @@ function buildMultipleValueValidation(lines, attributes, valueVariable, fieldPhp
     `    ${valueVariable} = $_POST[${fieldPhp}];`,
     "",
     `    if (!is_array(${valueVariable})) {`,
-    `        $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} muss als Liste uebermittelt werden.`)};`,
+    phpErrorLine(`Das Feld ${field} muss als Liste uebermittelt werden.`, "        "),
     "    }"
   );
 
@@ -354,7 +358,7 @@ function buildMultipleValueValidation(lines, attributes, valueVariable, fieldPhp
     lines.push(
       "",
       `    if (empty(${valueVariable})) {`,
-      `        $errors[${fieldPhp}] = ${phpString(`Bitte waehle mindestens eine Option fuer ${field}.`)};`,
+      phpErrorLine(`Bitte waehle mindestens eine Option fuer ${field}.`, "        "),
       "    }"
     );
   }
@@ -370,7 +374,7 @@ function addTypeValidation(lines, attributes, valueVariable, fieldPhp, field) {
   if (type === "email") {
     lines.push(
       `        if (filter_var(${valueVariable}, FILTER_VALIDATE_EMAIL) === false) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} muss eine gueltige E-Mail-Adresse sein.`)};`,
+      phpErrorLine(`Das Feld ${field} muss eine gueltige E-Mail-Adresse sein.`, "            "),
       "        }"
     );
     return;
@@ -379,7 +383,7 @@ function addTypeValidation(lines, attributes, valueVariable, fieldPhp, field) {
   if (type === "url") {
     lines.push(
       `        if (filter_var(${valueVariable}, FILTER_VALIDATE_URL) === false) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} muss eine gueltige URL sein.`)};`,
+      phpErrorLine(`Das Feld ${field} muss eine gueltige URL sein.`, "            "),
       "        }"
     );
     return;
@@ -388,7 +392,7 @@ function addTypeValidation(lines, attributes, valueVariable, fieldPhp, field) {
   if (type === "number" || type === "range") {
     lines.push(
       `        if (filter_var(${valueVariable}, FILTER_VALIDATE_FLOAT) === false) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} muss eine Zahl sein.`)};`,
+      phpErrorLine(`Das Feld ${field} muss eine Zahl sein.`, "            "),
       "        }"
     );
   }
@@ -402,7 +406,7 @@ function addAllowedValuesValidation(lines, attributes, valueVariable, fieldPhp, 
   lines.push(
     `        $allowedValues = ${phpArray(attributes.values)};`,
     `        if (!in_array(${valueVariable}, $allowedValues, true)) {`,
-    `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} enthaelt keinen erlaubten Wert.`)};`,
+    phpErrorLine(`Das Feld ${field} enthaelt keinen erlaubten Wert.`, "            "),
     "        }"
   );
 }
@@ -417,7 +421,7 @@ function addAllowedArrayValuesValidation(lines, attributes, valueVariable, field
     `        foreach (${valueVariable} as $selectedValue) {`,
     "            $selectedValue = trim((string) $selectedValue);",
     "            if (!in_array($selectedValue, $allowedValues, true)) {",
-    `                $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} enthaelt mindestens einen nicht erlaubten Wert.`)};`,
+    phpErrorLine(`Das Feld ${field} enthaelt mindestens einen nicht erlaubten Wert.`, "                "),
     "                break;",
     "            }",
     "        }"
@@ -427,16 +431,16 @@ function addAllowedArrayValuesValidation(lines, attributes, valueVariable, field
 function addLengthValidation(lines, attributes, valueVariable, fieldPhp, field) {
   if (attributes.minlength) {
     lines.push(
-      `        if (strlen(${valueVariable}) < ${Number(attributes.minlength)}) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist zu kurz.`)};`,
+      `        if (mb_strlen(${valueVariable}) < ${Number(attributes.minlength)}) {`,
+      phpErrorLine(`Das Feld ${field} ist zu kurz.`, "            "),
       "        }"
     );
   }
 
   if (attributes.maxlength) {
     lines.push(
-      `        if (strlen(${valueVariable}) > ${Number(attributes.maxlength)}) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist zu lang.`)};`,
+      `        if (mb_strlen(${valueVariable}) > ${Number(attributes.maxlength)}) {`,
+      phpErrorLine(`Das Feld ${field} ist zu lang.`, "            "),
       "        }"
     );
   }
@@ -453,7 +457,7 @@ function addMinMaxValidation(lines, attributes, valueVariable, fieldPhp, field) 
   if (attributes.min) {
     lines.push(
       `        if (filter_var(${valueVariable}, FILTER_VALIDATE_FLOAT) !== false && (float) ${valueVariable} < ${Number(attributes.min)}) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist zu klein.`)};`,
+      phpErrorLine(`Das Feld ${field} ist zu klein.`, "            "),
       "        }"
     );
   }
@@ -461,7 +465,7 @@ function addMinMaxValidation(lines, attributes, valueVariable, fieldPhp, field) 
   if (attributes.max) {
     lines.push(
       `        if (filter_var(${valueVariable}, FILTER_VALIDATE_FLOAT) !== false && (float) ${valueVariable} > ${Number(attributes.max)}) {`,
-      `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} ist zu gross.`)};`,
+      phpErrorLine(`Das Feld ${field} ist zu gross.`, "            "),
       "        }"
     );
   }
@@ -474,7 +478,7 @@ function addPatternValidation(lines, attributes, valueVariable, fieldPhp, field)
 
   lines.push(
     `        if (!preg_match(${phpRegex(attributes.pattern)}, ${valueVariable})) {`,
-    `            $errors[${fieldPhp}] = ${phpString(`Das Feld ${field} hat ein ungueltiges Format.`)};`,
+    phpErrorLine(`Das Feld ${field} hat ein ungueltiges Format.`, "            "),
     "        }"
   );
 }
